@@ -1,0 +1,9 @@
+{
+  "name": "One · Bilder für WhatsApp",
+  "short_name": "One Bilder",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#F4ECE0",
+  "theme_color": "#B2573A",
+  "icons": [{ "src": "assets/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}

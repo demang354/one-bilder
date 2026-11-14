@@ -11,6 +11,7 @@ const STANDARD = {
   vorlage: "naechster",
   format: "quadrat",
   jahr: "2026",
+  titel: "auto",
   naechster: { datum: "2026-10-09", von: "18:30", bis: "20:00", ort: "in Niederlauer (Wiesenmühle 1)" },
   termine: [
     { datum: "2026-11-04", von: "18:00", bis: "19:30", ort: "in der Marienkapelle in Bad Neustadt", geaendert: false },
@@ -27,6 +28,8 @@ const JAHRE = Array.from({ length: 11 }, (_, i) => String(new Date().getFullYear
 const jahrFeld = document.querySelector("#jahr");
 JAHRE.forEach((j) => jahrFeld.append(new Option(j, j)));
 let data = laden();
+const titelFeld = document.querySelector("#titel");
+titelFeld.addEventListener("change", () => { data.titel = titelFeld.value; aktualisieren(); });
 let assets = null;
 
 function laden() {
@@ -214,6 +217,7 @@ function aktualisieren() {
   });
   if (!JAHRE.includes(data.jahr)) jahrFeld.append(new Option(data.jahr, data.jahr));
   jahrFeld.value = data.jahr;
+  titelFeld.value = data.titel || "auto";
   $("#hinweisStandard").hidden = data.hinweis === STANDARD.hinweis;
   const termine = data.vorlage === "termine";
   $("#formNaechster").hidden = termine;
@@ -234,6 +238,7 @@ function renderDaten() {
     vorlage: data.vorlage,
     format: data.format,
     jahr: data.jahr,
+    titel: data.titel,
     termin: data.naechster,
     termine: data.termine,
     hinweis: data.hinweis,

@@ -72,6 +72,45 @@ function zeile(ctx, text, cx, baseline, o) {
   }
 }
 
+/* Lange Zeilen umbrechen statt verkleinern: Wörter mit Fett-Markierung behalten,
+   Zeilen ausgewogen lang (nicht eine volle und ein Rest). */
+function umbrechen(ctx, text, size, weight, maxW) {
+  const woerter = [];
+  for (const s of parseRich(text)) {
+    s.t.split(/(\s+)/).forEach((w) => { if (w.trim()) woerter.push({ t: w, b: s.b }); });
+  }
+  if (!woerter.length) return [];
+  const breite = (ws) => ws.reduce((sum, w, i) => {
+    ctx.font = fontStr(w.b ? 500 : weight, size);
+    return sum + ctx.measureText((i ? " " : "") + w.t).width;
+  }, 0);
+  const gierig = (grenze) => {
+    const zeilen = [[]];
+    for (const w of woerter) {
+      const akt = zeilen[zeilen.length - 1];
+      if (akt.length && breite([...akt, w]) > grenze) zeilen.push([w]);
+      else akt.push(w);
+    }
+    return zeilen;
+  };
+  let zeilen = gierig(maxW);
+  if (zeilen.length > 1) {
+    // kleinste Breite suchen, die noch dieselbe Zeilenzahl ergibt
+    let lo = maxW * 0.4, hi = maxW;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      if (gierig(mid).length <= zeilen.length) hi = mid; else lo = mid;
+    }
+    zeilen = gierig(hi);
+  }
+  // zurück in Text mit *Sternchen* (zusammenhängende fette Wörter gemeinsam)
+  return zeilen.map((ws) => ws.map((w, i) => {
+    const vor = i && ws[i - 1].b, nach = i < ws.length - 1 && ws[i + 1].b;
+    if (!w.b) return w.t;
+    return (vor ? "" : "*") + w.t + (nach ? "" : "*");
+  }).join(" ").replace(/\* \*/g, " "));
+}
+
 function goldBand(ctx, cx, top, w, h) {
   ctx.fillStyle = goldGradient(ctx, cx - w / 2, cx + w / 2);
   ctx.fillRect(cx - w / 2, top, w, h);
@@ -136,8 +175,11 @@ function vorlageTermine(ctx, data, UW, UH, assets) {
 
   const termine = data.termine.filter((t) => t.datum || t.ort);
   const n = Math.max(termine.length, 1);
-  const titel = `${n > 1 ? "Weitere Termine" : "Weiterer Termin"} für ${data.jahr}:`;
-  const hinweis = (data.hinweis || "").split("\n").filter((l) => l.trim());
+  const mehrzahl = data.titel === "mehrzahl" || (data.titel !== "einzahl" && n > 1);
+  const titel = `${mehrzahl ? "Weitere Termine" : "Weiterer Termin"} für ${data.jahr}:`;
+  // Hinweis: lange Zeilen umbrechen (Schrift bleibt groß), max. ca. 45 Zeichen je Zeile
+  const hinweis = (data.hinweis || "").split("\n").filter((l) => l.trim())
+    .flatMap((l) => umbrechen(ctx, l, K.size, K.weight, 1350));
   const adressen = (data.adressen || "").split("\n").filter((l) => l.trim());
 
   // Erst Positionen sammeln (y = Grundlinie, relativ), dann mittig setzen und zeichnen
@@ -157,8 +199,9 @@ function vorlageTermine(ctx, data, UW, UH, assets) {
       nach = "band";
     } else {
       y += (nach === "band" ? 177 : 174) * luft;
-      ops.push({ art: "zeile", text: terminZeile(t), y, o: T });
-      y += 99;
+      const zeit = terminZeile(t);
+      // Ohne Datum (z. B. „...folgen“) keine leere Zeile stehen lassen
+      if (zeit) { ops.push({ art: "zeile", text: zeit, y, o: T }); y += 99; }
       ops.push({ art: "zeile", text: t.ort || "", y, o: T });
       nach = "text";
     }

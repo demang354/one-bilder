@@ -19,6 +19,14 @@ const STANDARD = {
   ],
   hinweis: "*Bitte* Getränk und Sitzkissen mitbringen.\nKeine Anmeldung notwendig.",
   adressen: ["Bad Neustadt: Marienkapelle", "Hohenroth: Hinterm Dorf 12"],
+  info: {
+    mitwirkende: "mit MAOMI KLANG\nMaria an der Harfe\nMoni am Harmonium &\nMichael an der Gitarre",
+    text: "...und wenn du denkst du kannst nicht singen,\nbist du bei uns genau richtig.",
+    wert: "Wertschätzung 5 bis 15\u00a0€ – je nach Möglichkeit",
+    kontakt: "*Kontakt:* 0176 988 48 516",
+    klein: "Teilnahme auf eigene Gefahr.",
+  },
+  frei: { text: "", groesse: 80, fett: false, logo: true, kreis: true },
 };
 
 const SPEICHER = "one-bilder-v1";
@@ -39,7 +47,8 @@ function laden() {
       // Ältere Speicherstände hatten die Adressen als Freitext
       if (typeof s.adressen === "string") s.adressen = s.adressen.split("\n").filter((z) => z.trim());
       if (Array.isArray(s.adressen)) s.adressen = s.adressen.slice(0, 3);
-      return { ...structuredClone(STANDARD), ...s };
+      const basis = structuredClone(STANDARD);
+      return { ...basis, ...s, info: { ...basis.info, ...(s.info || {}) }, frei: { ...basis.frei, ...(s.frei || {}) } };
     }
   } catch (e) {}
   return structuredClone(STANDARD);
@@ -209,6 +218,38 @@ $("#adressePlus").addEventListener("click", () => {
   felder[felder.length - 1]?.focus();
 });
 
+/* ---------- Infoseite ---------- */
+const infoFelder = document.querySelectorAll("[data-info]");
+function infoFuellen() { infoFelder.forEach((f) => { f.value = data.info[f.dataset.info] ?? ""; }); }
+infoFelder.forEach((f) => f.addEventListener("input", () => { data.info[f.dataset.info] = f.value; aktualisieren(); }));
+$("#infoStandard").addEventListener("click", () => {
+  data.info = structuredClone(STANDARD.info);
+  infoFuellen();
+  aktualisieren();
+});
+
+/* ---------- Freie Seite ---------- */
+const freiText = $("#freiText"), freiGroesse = $("#freiGroesse");
+function freiFuellen() {
+  freiText.value = data.frei.text;
+  freiGroesse.value = data.frei.groesse;
+  $("#freiFett").checked = !!data.frei.fett;
+  $("#freiLogo").checked = data.frei.logo !== false;
+  $("#freiKreis").checked = data.frei.kreis !== false;
+}
+freiText.addEventListener("input", () => { data.frei.text = freiText.value; aktualisieren(); });
+freiGroesse.addEventListener("input", () => { data.frei.groesse = Number(freiGroesse.value); aktualisieren(); });
+const groesseSchritt = (d) => {
+  data.frei.groesse = Math.min(160, Math.max(40, (Number(data.frei.groesse) || 80) + d));
+  freiGroesse.value = data.frei.groesse;
+  aktualisieren();
+};
+$("#freiKleiner").addEventListener("click", () => groesseSchritt(-8));
+$("#freiGroesser").addEventListener("click", () => groesseSchritt(8));
+[["#freiFett", "fett"], ["#freiLogo", "logo"], ["#freiKreis", "kreis"]].forEach(([sel, k]) => {
+  $(sel).addEventListener("change", (e) => { data.frei[k] = e.target.checked; aktualisieren(); });
+});
+
 /* ---------- Anzeige ---------- */
 let geplant = false;
 function aktualisieren() {
@@ -220,7 +261,9 @@ function aktualisieren() {
   titelFeld.value = data.titel || "auto";
   $("#hinweisStandard").hidden = data.hinweis === STANDARD.hinweis;
   const termine = data.vorlage === "termine";
-  $("#formNaechster").hidden = termine;
+  $("#formNaechster").hidden = data.vorlage !== "naechster";
+  $("#formInfo").hidden = data.vorlage !== "info";
+  $("#formFrei").hidden = data.vorlage !== "frei";
   $("#formTermine").hidden = !termine;
   $("#formInfos").hidden = !termine;
   $("#vorschau").classList.toggle("status", data.format === "status");
@@ -243,6 +286,8 @@ function renderDaten() {
     termine: data.termine,
     hinweis: data.hinweis,
     adressen: data.adressen.join("\n"),
+    info: data.info,
+    frei: data.frei,
   };
 }
 
@@ -251,7 +296,7 @@ function dateiname() {
   const d = new Date();
   const jjmmtt = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
   const art = data.format === "quadrat" ? "Status_2000x2000px" : "Status_1080x1920px";
-  const was = data.vorlage === "naechster" ? "NaechsterTermin" : "Termine";
+  const was = { naechster: "NaechsterTermin", termine: "Termine", info: "Infoseite", frei: "FreieSeite" }[data.vorlage] || "Bild";
   return `${jjmmtt}_Singkreis_WhatsApp_${art}_${was}.jpg`;
 }
 
@@ -299,6 +344,8 @@ function bild(src) {
   naechsterAufbauen();
   termineAufbauen();
   adressenAufbauen();
+  infoFuellen();
+  freiFuellen();
   aktualisieren();
 
   const [logo, logoOhne, kreis] = await Promise.all([

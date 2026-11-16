@@ -77,7 +77,7 @@ function zeile(ctx, text, cx, baseline, o) {
 function umbrechen(ctx, text, size, weight, maxW) {
   const woerter = [];
   for (const s of parseRich(text)) {
-    s.t.split(/(\s+)/).forEach((w) => { if (w.trim()) woerter.push({ t: w, b: s.b }); });
+    s.t.split(/([ \t]+)/).forEach((w) => { if (w.trim()) woerter.push({ t: w, b: s.b }); });
   }
   if (!woerter.length) return [];
   const breite = (ws) => ws.reduce((sum, w, i) => {
@@ -245,6 +245,97 @@ function vorlageTermine(ctx, data, UW, UH, assets) {
   }
 }
 
+/* ---------- Gemeinsam für Infoseite und freie Seite ---------- */
+
+/* Blöcke aus Zeilen untereinander setzen, mittig zwischen oben und Mini-Logo,
+   bei zu viel Inhalt alles gleichmäßig verkleinern. */
+function textBloecke(ctx, bloecke, UW, UH, assets, opt) {
+  const cx = UW / 2;
+  const quadrat = UW === UH;
+  const ops = [];
+  let y = 0, erster = true, ersteGroesse = 0;
+  // Hochformat: Schrift etwas größer, damit der Status nicht leer wirkt
+  const f = quadrat ? 1 : 1.3;
+  const maxW = quadrat ? opt.maxW : Math.min(1660, opt.maxW * f);
+  bloecke = bloecke.map((b) => ({ ...b, abstand: b.abstand * f, o: { ...b.o, size: b.o.size * f } }));
+  for (const b of bloecke) {
+    const zeilen = b.zeilen.flatMap((l) => (l.trim() ? umbrechen(ctx, l, b.o.size, b.o.weight, maxW) : [""]));
+    while (zeilen.length && !zeilen[zeilen.length - 1].trim()) zeilen.pop();
+    if (!zeilen.length) continue;
+    zeilen.forEach((z, i) => {
+      if (erster) { ersteGroesse = b.o.size; erster = false; }
+      else y += i ? b.o.size * 1.22 : b.abstand;
+      if (z.trim()) ops.push({ text: z, y, o: b.o });
+    });
+  }
+  if (!ops.length) return;
+
+  // Platz: oben Rand, unten Mini-Logo (falls an)
+  const rand = quadrat ? 190 : 330;
+  const lw = quadrat ? 260 : 340;
+  const lh = lw * (assets.logoOhne.height / assets.logoOhne.width);
+  const logoTop = quadrat ? 1450 : UH - 420 - lh;
+  const verfuegbarOben = rand;
+  const verfuegbarUnten = opt.logo ? logoTop - 130 : UH - rand;
+  const oben = -ersteGroesse * ONE.cap;
+  const hoehe = y - oben;
+  const maxH = verfuegbarUnten - verfuegbarOben;
+  const k = Math.min(1, maxH / hoehe);
+  // optisch knapp über der Bildmitte, aber nie über die Ränder
+  const hk = hoehe * k;
+  const mitte = Math.min(Math.max(UH * 0.44, verfuegbarOben + hk / 2), verfuegbarUnten - hk / 2);
+  const dy = mitte - (oben + hoehe / 2) * k;
+
+  ctx.save();
+  ctx.translate(cx, dy);
+  ctx.scale(k, k);
+  for (const op of ops) zeile(ctx, op.text, 0, op.y, { ...op.o, maxW });
+  ctx.restore();
+
+  if (opt.logo) {
+    ctx.drawImage(assets.logoOhne, cx - lw / 2 - 6, logoTop, lw, lh);
+  }
+}
+
+function kleingedruckt(ctx, text, UW, UH) {
+  if (!text || !text.trim()) return;
+  const quadrat = UW === UH;
+  zeile(ctx, text, UW / 2, UH - (quadrat ? 85 : 150), { size: quadrat ? 34 : 46, weight: 300, maxW: UW - 200 });
+}
+
+/* ---------- Vorlage C: Infoseite (Mitwirkende, Text, Wertschätzung, Kontakt) ---------- */
+
+function vorlageInfo(ctx, data, UW, UH, assets) {
+  const quadrat = UW === UH;
+  if (quadrat) geisterKreis(ctx, assets.kreis, { cx: 1260, cy: 1300, w: 1900, rot: 0 });
+  else geisterKreis(ctx, assets.kreis, { cx: 1150, cy: 1750, w: 2500, rot: 0 });
+  const i = data.info || {};
+  const M = { size: 78, weight: 500 }, L = { size: 78, weight: 300 };
+  const zl = (t) => (t || "").split("\n");
+  textBloecke(ctx, [
+    { zeilen: zl(i.mitwirkende), o: M, abstand: 0 },
+    { zeilen: zl(i.text), o: L, abstand: 150 },
+    { zeilen: zl(i.wert), o: L, abstand: 110 },
+    { zeilen: zl(i.kontakt), o: L, abstand: 110 },
+  ], UW, UH, assets, { maxW: 1460, logo: true });
+  kleingedruckt(ctx, i.klein, UW, UH);
+}
+
+/* ---------- Vorlage D: Freie Seite (nur Hintergrund, eigener Text, eigene Größe) ---------- */
+
+function vorlageFrei(ctx, data, UW, UH, assets) {
+  const quadrat = UW === UH;
+  const f = data.frei || {};
+  if (f.kreis !== false) {
+    if (quadrat) geisterKreis(ctx, assets.kreis, { cx: 1260, cy: 1300, w: 1900, rot: 0 });
+    else geisterKreis(ctx, assets.kreis, { cx: 1150, cy: 1750, w: 2500, rot: 0 });
+  }
+  const groesse = Number(f.groesse) || 80;
+  textBloecke(ctx, [
+    { zeilen: (f.text || "").split("\n"), o: { size: groesse, weight: f.fett ? 500 : 300 }, abstand: 0 },
+  ], UW, UH, assets, { maxW: 1560, logo: f.logo !== false });
+}
+
 function renderBild(canvas, data, assets) {
   const F = FORMATE[data.format];
   canvas.width = F.w;
@@ -257,6 +348,8 @@ function renderBild(canvas, data, assets) {
   ctx.scale(F.k, F.k);
   const UW = F.w / F.k, UH = F.h / F.k;
   if (data.vorlage === "naechster") vorlageNaechster(ctx, data, UW, UH, assets);
+  else if (data.vorlage === "info") vorlageInfo(ctx, data, UW, UH, assets);
+  else if (data.vorlage === "frei") vorlageFrei(ctx, data, UW, UH, assets);
   else vorlageTermine(ctx, data, UW, UH, assets);
   ctx.restore();
 }
